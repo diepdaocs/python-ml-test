@@ -3,24 +3,47 @@
 import pandas as pd
 from dateutil import relativedelta
 from datetime import date
+from peewee import *
 
 __author__ = 'diepdt'
+
+# database to save data
+db = SqliteDatabase('OrderDB.db')
+
+
+class BaseModel(Model):
+    class Meta:
+        database = db
+
+
+class UserOrder(BaseModel):
+    """
+    Order model
+    """
+    order_id = IntegerField(primary_key=True)
+    order_date = DateTimeField(formats='%d.%m.%Y', null=False)
+    user_id = IntegerField(index=True, null=False)
+    total_charges_usd = FloatField(null=False)
 
 
 def date_parser(text):
     """
     Date parser
-    :param text: text to be parsed to datetime object
-    :return: datetime object
+    Args:
+        text: text to be parsed to datetime object
+    Returns:
+        datetime object
     """
     return pd.datetime.strptime(text, '%d.%m.%Y')
 
 
-def load_data(file_path):
+def load_data_from_file(file_path):
     """
     Load data from csv
-    :param file_path: file path
-    :return: pandas DataFrame
+    Args:
+        file_path: file path
+    Return:
+        pandas DataFrame
     """
     data_frame = pd.read_csv(file_path, sep=';', parse_dates=['Order_Date'],
                              date_parser=date_parser)
@@ -28,9 +51,43 @@ def load_data(file_path):
     return data_frame
 
 
+def save_data_into_database(file_path):
+    """
+    Save csv order data to database
+    Args:
+        file_path: file path
+    """
+    # create database and table
+    db.connect()
+    if not UserOrder.table_exists():
+        db.create_table(UserOrder)
+    # insert data
+    data_frame = pd.read_csv(file_path, sep=';')
+    for idx, row in data_frame.iterrows():
+        UserOrder.create_or_get(order_id=row['Order_ID'], order_date=row['Order_Date'], user_id=row['User_ID'],
+                                total_charges_usd=row['Total_Charges_USD'].replace(',', '.'))
+
+
+def load_order_data():
+    """
+    load data from database
+    Returns:
+        DataFrame of user data
+    """
+    data = []
+    orders = UserOrder.select(UserOrder.order_date, UserOrder.user_id)
+    for order in orders:
+        data.append((date_parser(order.order_date), order.user_id))
+
+    data_frame = pd.DataFrame(data=data, columns=['Order_Date', 'User_ID'])
+    return data_frame
+
+
 def main():
-    # load data
-    data_frame = load_data('OrderDB.csv')
+    # save data into database
+    save_data_into_database('OrderDB.csv')
+    # load order data
+    data_frame = load_order_data()
     # sort order by date for easy user tracking
     data_frame.sort('Order_Date')
     # loop through data to tracking user buy (first_buy, second_buy, third_buy,...)

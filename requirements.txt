@@ -1,1 +1,2 @@
 pandas
+peewee>=2.6.4
